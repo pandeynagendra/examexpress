@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom"; 
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Star,
   Send,
   MessageSquare,
   CheckCircle,
-  AlertCircle,
-  Home, 
+  Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/Service/api";
@@ -19,20 +17,51 @@ interface FeedbackQuestion {
   Rating: number;
 }
 
-const USER_ID = 748307;
-const BATCH_ID = 27840;
-
 const Feedback = () => {
   const [questions, setQuestions] = useState<FeedbackQuestion[]>([]);
-  const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const navigate = useNavigate();
 
+  /* ================= LOGIN DATA (SAFE WAY) ================= */
 
+  const [token, setToken] = useState<string | null>(null);
+  const [USER_ID, setUSER_ID] = useState<number | null>(null);
+  const [BATCH_ID, setBATCH_ID] = useState<number | null>(null);
+  const [AGENCY_ID, setAGENCY_ID] = useState<number | null>(null);
 
   useEffect(() => {
+    const candidateRaw = localStorage.getItem("candidate");
+
+    if (!candidateRaw) {
+      toast.error("Session expired. Please login again.");
+      navigate("/");
+      return;
+    }
+
+    try {
+      const candidate = JSON.parse(candidateRaw);
+
+      setToken(candidate.Token || localStorage.getItem("authToken"));
+      setUSER_ID(candidate.UserID ? Number(candidate.UserID) : null);
+      setBATCH_ID(candidate.BatchID ?? null);
+      setAGENCY_ID(candidate.AgencyID ?? null);
+
+      setAuthChecked(true);
+    } catch (err) {
+      console.error("Invalid candidate data", err);
+      toast.error("Invalid session data");
+      navigate("/");
+    }
+  }, [navigate]);
+
+  /* ================= FETCH QUESTIONS ================= */
+
+  useEffect(() => {
+    if (!authChecked) return;
+
     const fetchQuestions = async () => {
       try {
         const res = await api.get(
@@ -52,7 +81,7 @@ const Feedback = () => {
     };
 
     fetchQuestions();
-  }, []);
+  }, [authChecked]);
 
   /* ================= SET RATING ================= */
 
@@ -64,6 +93,16 @@ const Feedback = () => {
     );
   };
 
+  /* ================= STAR → TEXT ================= */
+
+  const getReviewText = (rating: number) => {
+    if (rating === 1) return "Poor";
+    if (rating === 2) return "Good";
+    if (rating === 3) return "Very Good";
+    return "Excellent";
+  };
+
+  /* ================= SUBMIT ================= */
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,9 +112,20 @@ const Feedback = () => {
       return;
     }
 
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      toast.error("Authentication token missing");
+    // ✅ SAFE CHECK
+    if (
+      !token ||
+      USER_ID == null ||
+      BATCH_ID == null ||
+      AGENCY_ID == null
+    ) {
+      console.error("LOGIN DATA DEBUG 👉", {
+        token,
+        USER_ID,
+        BATCH_ID,
+        AGENCY_ID,
+      });
+      toast.error("Login data missing");
       return;
     }
 
@@ -83,7 +133,12 @@ const Feedback = () => {
 
     try {
       const feedbackReview =
-        questions.map(q => `${q.QuestionID}_${q.Rating}`).join(",") + ",";
+        questions
+          .map(
+            q =>
+              `${q.QuestionID}_${q.Rating}_${getReviewText(q.Rating)}`
+          )
+          .join(",") + ",";
 
       const feedBackToggle =
         questions.map(q => `${q.QuestionID}_1`).join(",");
@@ -92,6 +147,7 @@ const Feedback = () => {
         `/SaveFeedbackByUserType` +
         `?UserID=${USER_ID}` +
         `&BatchID=${BATCH_ID}` +
+        `&AgencyID=${AGENCY_ID}` +
         `&UserType=Candidate` +
         `&FeedbackReview=${encodeURIComponent(feedbackReview)}` +
         `&FeedBackToggle=${encodeURIComponent(feedBackToggle)}` +
@@ -109,39 +165,33 @@ const Feedback = () => {
       setSubmitted(true);
 
     } catch (error: any) {
-      console.error("API ERROR FULL 👉", error.response?.data || error);
-      toast.error(error.response?.data?.Message || "400 Bad Request");
+      console.error("API ERROR 👉", error.response?.data || error);
+      toast.error("Feedback submission failed");
     } finally {
       setLoading(false);
     }
   };
 
-
+  /* ================= SUCCESS UI ================= */
 
   if (submitted) {
     return (
-      <div className="max-w-2xl mx-auto p-8">
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
-          <CheckCircle className="w-14 h-14 mx-auto text-green-600 mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Thank You!</h2>
-          <p className="text-gray-600 mb-6">
-            Your feedback has been submitted successfully.
-          </p>
+      <div className="max-w-2xl mx-auto p-8 text-center bg-green-50 border rounded-2xl">
+        <CheckCircle className="w-14 h-14 mx-auto text-green-600 mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Thank You!</h2>
+        <p className="text-gray-600 mb-6">
+          Your feedback has been submitted successfully.
+        </p>
 
-       
-          <Button
-            onClick={() => navigate("/")}   
-            className="px-6 py-3 text-base"
-          >
-            <Home className="mr-2 w-4 h-4" />
-            Return to Home
-          </Button>
-        </div>
+        <Button onClick={() => navigate("/")}>
+          <Home className="mr-2 w-4 h-4" />
+          Return to Home
+        </Button>
       </div>
     );
   }
 
-
+  /* ================= UI ================= */
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -177,18 +227,6 @@ const Feedback = () => {
             </div>
           </div>
         ))}
-
-        <div className="bg-white border rounded-2xl p-6">
-          <Textarea
-            value={comment}
-            onChange={e => setComment(e.target.value)}
-            placeholder="Additional comments"
-            className="min-h-[120px]"
-          />
-          <div className="flex items-center gap-1 text-sm text-gray-500 mt-2">
-            <AlertCircle className="w-4 h-4" /> Confidential
-          </div>
-        </div>
 
         <Button type="submit" disabled={loading} className="w-full py-6 text-lg">
           {loading ? "Submitting..." : <><Send className="mr-2" /> Submit Feedback</>}

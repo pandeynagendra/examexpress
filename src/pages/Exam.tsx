@@ -38,6 +38,7 @@ interface CandidateInfo {
   QB_TheoryID: number;
 }
 
+
 export default function Exam() {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
